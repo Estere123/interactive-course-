@@ -1,0 +1,197 @@
+/* General Styles */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;
+  background-color: #f9f9f9;
+  color: #333;
+}
+  
+header {
+  background-color: #333;
+  color: #fff;
+  padding: 1rem 0;
+  text-align: center;
+}
+
+header h1 {
+  margin: 0;
+}
+
+nav {
+  display: flex;
+  justify-content: space-between; /* Center the nav content */
+  padding: 10px;
+}
+
+.settings{
+  display: flex;
+  align-items: center; /* Vertically center items */
+  padding: 20px;
+}
+
+#language-select{
+  margin-right: 10px;
+}
+
+nav ul {
+  list-style: none;
+  padding: 0;
+}
+
+nav ul li {
+  display: inline;
+  margin: 0 10px;
+}
+
+nav ul li a {
+  color: #fff;
+  text-decoration: none;
+}
+
+main {
+  padding: 20px;
+}
+
+footer {
+  background-color: #333;
+  color: #fff;
+  text-align: center;
+  padding: 1rem 0;
+  margin-top: 20px;
+}
+
+/* Hero Section */
+.hero {
+  background-color: #F0F8FF;
+  color: #333333;
+  padding: 50px 20px;
+  text-align: center;
+}
+
+.hero h2 {
+  margin: 0;
+}
+
+.hero p {
+  font-size: 1.2rem;
+}
+
+.hero .btn{
+  background-color: #FF6600;
+}
+
+.hero .btn:hover {
+  background-color: #E65C00;
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 20px;
+  background-color: #ff6347;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 5px;
+  margin-top: 10px;
+}
+
+/* Product Grid */
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.card {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  text-align: center;
+}
+
+.card img {
+  max-width: 100%;
+  border-radius: 5px;
+}
+
+.card h3 {
+  margin: 10px 0;
+}
+
+.card p {
+  font-size: 1.1rem;
+  color: #007bff;
+}
+
+.card button {
+  background-color: #28a745;
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* Filters */
+.filters {
+  margin-bottom: 20px;
+}
+
+.filter-options {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.filter-options select {
+  padding: 5px;
+  border-radius: 5px;
+}
+
+/* About Section */
+.about {
+  text-align: center;
+  padding: 20px;
+}
+
+
+/* Dark Mode */
+body.dark-mode {
+  background-color: #121212;
+  color: #E0E0E0;
+}
+
+.dark-mode header, 
+.dark-mode footer {
+  background-color: #1E1E1E;
+}
+
+.dark-mode .hero {
+  background-color: #1A1A2E; 
+  color: #E0E0E0; 
+}
+
+.dark-mode .hero .btn {
+  background-color: #FF9800; 
+}
+
+.dark-mode .hero .btn:hover {
+  background-color: #E68A00; 
+}
+
+.dark-mode .card {
+  background-color: #1E1E1E;
+  border: 1px solid #333;
+}
+
+.dark-mode a {
+  color: #2196F3;
+}
+
+.dark-mode .btn {
+  background-color: #FF9800;
+  color: black;
+}

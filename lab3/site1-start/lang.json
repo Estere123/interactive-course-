@@ -1,0 +1,40 @@
+{ 
+  "en": {
+      "title": "E-Commerce Demo",
+      "home": "Home",
+      "products": "Products",
+      "about": "About",
+      "themeToggle": "Toggle Theme",
+      "welcomeMessage": "Welcome to Our Store",
+      "shopNow": "Shop Now",
+      "aboutUsTitle": "About Us",
+      "aboutUsText": "We are a demo e-commerce store showcasing the latest trends in technology and fashion. Our mission is to provide high-quality products at affordable prices.",
+      "filters": "Products",
+      "allCategories": "All Categories",
+      "electronics": "Electronics",
+      "clothing": "Clothing",
+      "priceLow": "Price: Low to High",
+      "priceHigh": "Price: High to Low",
+      "addToCart": "Add to Cart",
+      "footerText": "© 2025 Development of Interactive Systems Course."
+  },
+  "fr": {
+    "title": "Démo E-Commerce",
+    "home": "Accueil",
+    "products": "Produits",
+    "about": "À Propos",
+    "themeToggle": "Changer de Thème",
+    "welcomeMessage": "Bienvenue dans Notre Magasin",
+    "shopNow": "Acheter Maintenant",
+    "aboutUsTitle": "À Propos de Nous",
+    "aboutUsText": "Nous sommes un magasin de démonstration de commerce électronique présentant les dernières tendances en technologie et en mode. Notre mission est de fournir des produits de haute qualité à des prix abordables.",
+    "filters": "Produits",
+    "allCategories": "Toutes Catégories",
+    "electronics": "Électronique",
+    "clothing": "Vêtements",
+    "priceLow": "Prix : Du Plus Bas au Plus Élevé",
+    "priceHigh": "Prix : Du Plus Élevé au Plus Bas",
+    "addToCart": "Ajouter au Panier",
+    "footerText": "© 2025 Cours de Développement de Systèmes Interactifs."
+  }
+}
