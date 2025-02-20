@@ -1,6 +1,7 @@
-const themeBtn = document.querySelector("theme-toggle");
-const moodeLight = document.querySelector("mode-light");
-const moodeDark = document.querySelector("mode-dark");
+const themeBtn = document.querySelector("#theme-toggle");
+const moodeLight = document.querySelector("#mode-light");
+const moodeDark = document.querySelector("#mode-dark");
+console.log(moodeDark, moodeLight)
 
 
 
