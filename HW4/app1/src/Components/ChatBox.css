@@ -1,0 +1,24 @@
+.chat-container  {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin-left: 100px;
+    margin-top: 20px;
+}
+
+
+.ChatBox .talkjs-container {
+    flex: 1;
+    
+    
+}
+
+.ChatBox {
+    display: flex;
+    margin: 60px auto;
+    width: 500px;
+    height: 600px;
+    
+    
+}

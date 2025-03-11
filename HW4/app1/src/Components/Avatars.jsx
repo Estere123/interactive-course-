@@ -3,23 +3,30 @@ import LauraImage from '../assets/images/laura.jpg';
 import KateImage from '../assets/images/kate.jpg';
 import LillyImage from '../assets/images/lilly.jpg';
 import AnnaImage from '../assets/images/anna.jpeg';
-
+import './Avatars.css';
 
 export default function Avatars() {
   return (
-    <div>
-      <img src={LauraImage} alt='Laura' />
-      <p>Laura</p>
+    <div className='avatars-container'>
+      <div className='avatar'>
+        <img src={LauraImage} alt='Laura' />
+        <p>Laura</p>
+      </div>
 
-      <img src={KateImage} alt='Kate' />
-      <p>Kate</p>
+      <div className='avatar'>
+        <img src={KateImage} alt='Kate' />
+        <p>Kate</p>
+      </div>
 
-      <img src={LillyImage} alt='Lilly' />
-      <p>Lilly</p>
+      <div className='avatar'>
+        <img src={LillyImage} alt='Lilly' />
+        <p>Lilly</p>
+      </div>
 
-      <img src={AnnaImage} alt='Anna' />
-      <p>Anna</p>
-
+      <div className='avatar'>
+        <img src={AnnaImage} alt='Anna' />
+        <p>Anna</p>
+      </div>
     </div>
   )
 }
