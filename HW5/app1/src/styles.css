@@ -28,3 +28,7 @@ body {
     justify-content: center;
     align-items: center;
 }
+
+.square-winning {
+    background-color: green;
+}
