@@ -1,9 +1,9 @@
 
 import './App.css';
 import Board from './Components/Board';
+import Game from './Components/Game';
 import Square from './Components/Square';
 import './styles.css';
-
 
 function App() {
   
@@ -11,11 +11,13 @@ function App() {
   return (
     <>
    
-   <Board/>
    
-   
+   <Game/>
+
     </>
   )
 }
 
 export default App
+
+
