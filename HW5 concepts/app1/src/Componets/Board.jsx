@@ -22,6 +22,13 @@ export default function Board() {
     status = 'Next player: ' + (xIsNext ? 'X' : 'O');
   }
   
-  
+  return (
+<div>
+<div className="board-row">
+<Square value={squares[0]} onSquareClick={() => handleClick(0)} />
+    </div>
+
+</div>
+  )
    
 }
