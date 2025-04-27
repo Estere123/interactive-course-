@@ -1,6 +1,6 @@
 import React from 'react'
 
-const MealCard = ({mealData, isRandom = false}) => {
+const MealCard = ({mealData, isRandom = false, addToFavorites}) => {
   return (
     <div className="meal">
       <div className="meal-header">
@@ -9,8 +9,11 @@ const MealCard = ({mealData, isRandom = false}) => {
                     </div>
                     <div className="meal-body">
                         <h3>{mealData.strMeal}</h3>
-                        <button className="fav-btn">
+                        <button className="fav-btn"
+                        onClick = {() => addToFavorites(mealData)}
+                        >
                             <i className="fas fa-heart"></i>
+                            
                         </button>
                     </div>
     </div>

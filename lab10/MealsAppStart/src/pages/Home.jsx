@@ -10,10 +10,14 @@ const Search_API = import.meta.env.VITE_SEARCH_MEAL_API;
 const Home = () => {
   const [randomMeal, setRandomMeal] = useState(null);
   const [favoriteMeals, setFavoriteMeals] = useState([]);
-  const [favoriteMealsIDs, setFavoriteMealsIDs] = useState([]);
-  useEffect(() => {
-    loadRandomMeal()
-  }, [])
+  const [searchMeals, setSearchMeals] = useState([]);
+
+  useEffect(()=> {
+    const storedFavorites = JSON.parse(localStorage.getItem("favoriteMeals")) || [];
+    setFavoriteMeals(storedFavorites);
+    loadRandomMeal();
+  }, []);
+  
 
   const loadRandomMeal = async () => {
     const resp = await fetch(RAMDOMAPI);
@@ -22,6 +26,19 @@ const Home = () => {
     console.log(meal);
     setRandomMeal(meal);
   }
+const addToFavorites = (meal) => {
+  if (!favoriteMeals.some((fav) => fav.idMeal === meal.idMeal)) {
+    const updateFavorites = [...favoriteMeals, meal];
+    setFavoriteMeals(updateFavorites);
+    localStorage.setItem("favoriteMeals", JSON.stringify(updateFavorites));
+  }
+};
+
+const removeFromFavorites = (mealId) => {
+  const updateFavorites = favoriteMeals.filter((meal)=> meal.idMeal !== mealId);
+  setFavoriteMeals(updateFavorites);
+  localStorage.setItem("favoriteMeals", JSON.stringify(updateFavorites));
+};
 
   const getMealById = async () => {
     const resp = await fetch(MEALS_BYID_API);
@@ -31,19 +48,47 @@ const Home = () => {
     getRandomMeal(meal);
   }
 
+  const handleSearch = async (query) => {
+    const resp = await fetch(`${Search_API}${query}`);
+    const data = await resp.json();
+    console.log(data);
+
+    if (data.meals) {
+      setRandomMeal(null);
+      setSearchMeals(data.meals);
+    } else {
+      setSearchMeals([]);
+    }
+  };
+
   return (
     <div className="store">
-      <Search />
+      <Search onSearch={handleSearch} />
 
-      <Favorites />
+      <Favorites 
+      favoriteMeals={favoriteMeals}
+      removeFromFavorites = {removeFromFavorites}
+      />
 
       <div className="meals" id="meals">
-        {randomMeal && (
+        {searchMeals.length >0 ?(
+          searchMeals.map((meal) => (
+        <MealCard
+        key={meal.idMeal}
+        mealData={meal}
+        addToFavorites={addToFavorites}
+        />
+          ))
+        
+        ) : randomMeal ? (
         <MealCard 
         mealData={randomMeal}
           isRandom={true}
+          addToFavorites={addToFavorites}
        />
-        )}
+        ) : (
+          <p>No meals found</p>
+      )}
         
       </div>
 

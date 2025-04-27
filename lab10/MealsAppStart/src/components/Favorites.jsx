@@ -1,5 +1,5 @@
 
-const Favorites = ({favoriteMeals}) => {
+const Favorites = ({favoriteMeals, removeFromFavorites}) => {
   return (
     <div className="favorites-section">
       <h3>Favorites</h3>
@@ -11,7 +11,9 @@ const Favorites = ({favoriteMeals}) => {
           src={meal.strMealThumb}
           alt={meal.strMeal}/>
           <span>{meal.strMeal}</span>
-          <button className="clear">
+          <button className="clear"
+          onClick={() => removeFromFavorites (meal.idMeal)}
+          >
             <i className="fas fa-window-close"></i>
             </button>
             </li>
