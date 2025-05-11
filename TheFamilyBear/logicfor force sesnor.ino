@@ -17,14 +17,11 @@ FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
-// Motor pin
-const int motorPin = 19;
-
 // FSR sensor pin
-const int fsrPin = 2; // Use a valid analog input pin
+const int fsrPin = 5; // Use a valid analog input pin
 
 // Pickup threshold
-const int pickupThreshold = 30;
+const int pickupThreshold = 20;
 
 // Timezone info
 #define NTP_SERVER "pool.ntp.org"
@@ -54,9 +51,9 @@ void connectToWiFi() {
 
 void setup() {
   Serial.begin(115200);
-  pinMode(motorPin, OUTPUT);
-  digitalWrite(motorPin, LOW); // Motor off
+  pinMode(fsrPin, INPUT);
 
+  // Connect to Wi-Fi
   connectToWiFi();
 
   // Initialize NTP
@@ -82,7 +79,7 @@ void setup() {
 
 long long getRealTimestamp() {
   time_t now = time(nullptr);
-  return (long long)now * 1000;  // Convert to ms
+  return (long long)now * 1000;  // Convert to milliseconds
 }
 
 void loop() {
@@ -113,5 +110,6 @@ void loop() {
     Serial.println(fbdo.errorReason());
   }
 
-  delay(1000);
+  delay(1000);  // Delay before next loop
 }
+
