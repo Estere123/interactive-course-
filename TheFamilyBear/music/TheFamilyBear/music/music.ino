@@ -30,32 +30,142 @@ ForceSensor forceSensor(FSR_PIN); // Instantiate the force sensor object with pi
 
 // Full "Harry Potter" theme (Potter1)
 long melody1[] = {
-  NOTE_E5, NOTE_E5, NOTE_E5, NOTE_E5, NOTE_E5, NOTE_G5, NOTE_D5, NOTE_C5, NOTE_B4, NOTE_A4, 
-  NOTE_B4, NOTE_C5, NOTE_D5, NOTE_E5, NOTE_B4, NOTE_A4, NOTE_B4, NOTE_C5, NOTE_D5, NOTE_E5
+ REST, NOTE_D4,
+  NOTE_G4, NOTE_AS4, NOTE_A4,
+  NOTE_G4, NOTE_D5,
+  NOTE_C5, 
+  NOTE_A4,
+  NOTE_G4, NOTE_AS4, NOTE_A4,
+  NOTE_F4, NOTE_GS4,
+  NOTE_D4, 
+  NOTE_D4,
+  
+  NOTE_G4, NOTE_AS4, NOTE_A4,
+  NOTE_G4, NOTE_D5,
+  NOTE_F5, NOTE_E5,
+  NOTE_DS5, NOTE_B4,
+  NOTE_DS5, NOTE_D5, NOTE_CS5,
+  NOTE_CS4, NOTE_B4,
+  NOTE_G4,
+  NOTE_AS4,
+   
+  NOTE_D5, NOTE_AS4,
+  NOTE_D5, NOTE_AS4,
+  NOTE_DS5, NOTE_D5,
+  NOTE_CS5, NOTE_A4,
+  NOTE_AS4, NOTE_D5, NOTE_CS5,
+  NOTE_CS4, NOTE_D4,
+  NOTE_D5, 
+  REST, NOTE_AS4,  
+  
+  NOTE_D5, NOTE_AS4,
+  NOTE_D5, NOTE_AS4,
+  NOTE_F5, NOTE_E5,
+  NOTE_DS5, NOTE_B4,
+  NOTE_DS5, NOTE_D5, NOTE_CS5,
+  NOTE_CS4, NOTE_AS4,
+  NOTE_G4
 };
 long durations1[] = {
-  4, 4, 4, 4, 4, 8, 8, 8, 8, 8, 
-  8, 8, 8, 4, 4, 8, 8, 8, 8, 8
+    2, 4,
+  4, 8, 4,
+  2, 4,
+  2, 
+  2,
+  4, 8, 4,
+  2, 4,
+  1, 
+  4,
+  
+  4, 8, 4,
+  2, 4,
+  2, 4,
+  2, 4,
+  4, 8, 4,
+  2, 4,
+  1,
+  4,
+   
+  2, 4,
+  2, 4,
+  2, 4,
+  2, 4,
+  4, 8, 4,
+  2, 4,
+  1, 
+  4, 4,  
+  
+  2, 4,
+  2, 4,
+  2, 4,
+  2, 4,
+  4, 8, 4,
+  2, 4,
+  1
 };
 
 // Full "Merry Christmas" song
 long melody2[] = {
-  NOTE_E5, NOTE_E5, NOTE_F5, NOTE_G5, NOTE_G5, NOTE_F5, NOTE_E5, NOTE_D5, NOTE_C5, NOTE_B4,
-  NOTE_E5, NOTE_E5, NOTE_F5, NOTE_G5, NOTE_G5, NOTE_F5, NOTE_E5, NOTE_D5, NOTE_C5, NOTE_B4
+   NOTE_E5, NOTE_E5, NOTE_E5,
+  NOTE_E5, NOTE_E5, NOTE_E5,
+  NOTE_E5, NOTE_G5, NOTE_C5, NOTE_D5,
+  NOTE_E5,
+  NOTE_F5, NOTE_F5, NOTE_F5, NOTE_F5,
+  NOTE_F5, NOTE_E5, NOTE_E5, NOTE_E5, NOTE_E5,
+  NOTE_E5, NOTE_D5, NOTE_D5, NOTE_E5,
+  NOTE_D5, NOTE_G5
 };
 long durations2[] = {
-  4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-  4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+    8, 8, 4,
+  8, 8, 4,
+  8, 8, 8, 8,
+  2,
+  8, 8, 8, 8,
+  8, 8, 8, 16, 16,
+  8, 8, 8, 8,
+  4, 4
 };
 
 // Full "Pink Panther" theme
 long melody3[] = {
-  NOTE_E5, NOTE_E5, NOTE_B4, NOTE_C5, NOTE_B4, NOTE_A4, NOTE_B4, NOTE_C5, NOTE_B4, NOTE_A4,
-  NOTE_B4, NOTE_C5, NOTE_B4, NOTE_A4, NOTE_E5, NOTE_E5, NOTE_B4, NOTE_C5, NOTE_B4, NOTE_A4
+  REST, REST, REST, NOTE_DS4, 
+  NOTE_E4, REST, NOTE_FS4, NOTE_G4, REST, NOTE_DS4,
+  NOTE_E4, NOTE_FS4,  NOTE_G4, NOTE_C5, NOTE_B4, NOTE_E4, NOTE_G4, NOTE_B4,   
+  NOTE_AS4, NOTE_A4, NOTE_G4, NOTE_E4, NOTE_D4, 
+  NOTE_E4, REST, REST, NOTE_DS4,
+  
+  NOTE_E4, REST, NOTE_FS4, NOTE_G4, REST, NOTE_DS4,
+  NOTE_E4, NOTE_FS4,  NOTE_G4, NOTE_C5, NOTE_B4, NOTE_G4, NOTE_B4, NOTE_E5,
+  NOTE_DS5,   
+  NOTE_D5, REST, REST, NOTE_DS4, 
+  NOTE_E4, REST, NOTE_FS4, NOTE_G4, REST, NOTE_DS4,
+  NOTE_E4, NOTE_FS4,  NOTE_G4, NOTE_C5, NOTE_B4, NOTE_E4, NOTE_G4, NOTE_B4,   
+  
+  NOTE_AS4, NOTE_A4, NOTE_G4, NOTE_E4, NOTE_D4, 
+  NOTE_E4, REST,
+  REST, NOTE_E5, NOTE_D5, NOTE_B4, NOTE_A4, NOTE_G4, NOTE_E4,
+  NOTE_AS4, NOTE_A4, NOTE_AS4, NOTE_A4, NOTE_AS4, NOTE_A4, NOTE_AS4, NOTE_A4,   
+  NOTE_G4, NOTE_E4, NOTE_D4, NOTE_E4, NOTE_E4, NOTE_E4
 };
 long durations3[] = {
-  4, 4, 4, 4, 4, 4, 8, 8, 8, 8,
-  4, 4, 4, 4, 4, 4, 4, 4, 8, 8
+    2, 4, 8, 8, 
+  4, 8, 8, 4, 8, 8,
+  8, 8,  8, 8, 8, 8, 8, 8,   
+  2, 16, 16, 16, 16, 
+  2, 4, 8, 4,
+  
+  4, 8, 8, 4, 8, 8,
+  8, 8,  8, 8, 8, 8, 8, 8,
+  1,   
+  2, 4, 8, 8, 
+  4, 8, 8, 4, 8, 8,
+  8, 8,  8, 8, 8, 8, 8, 8,   
+  
+  2, 16, 16, 16, 16, 
+  4, 4,
+  4, 8, 8, 8, 8, 8, 8,
+  16, 8, 16, 8, 16, 8, 16, 8,   
+  16, 16, 16, 16, 16, 2
 };
 
 // WiFi connection
@@ -173,14 +283,31 @@ void setup() {
 }
 
 void loop() {
-  // Check if the force sensor has been squeezed for more than 10 seconds
-  if (forceSensor.isSqueezedForDuration(10000)) {
-    Serial.println("Force sensor pressed for more than 10 seconds!");
+  // Print WiFi status
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("⚠️ WiFi not connected!");
+  } else {
+    Serial.println("✅ WiFi is connected.");
+  }
 
-    // Read Firebase command (this will read the song pattern)
+  // Read and display raw sensor value
+  int sensorValue = analogRead(FSR_PIN);
+  Serial.print("🔍 Force sensor raw value: ");
+  Serial.println(sensorValue);
+
+  // Check if pressed long enough
+  if (forceSensor.isSqueezedForDuration(10000)) {
+    Serial.println("⏱️ Force sensor pressed for > 10 seconds!");
+
+    // Check timestamp logic
+    long long currentTime = getRealTimestamp();
+    Serial.print("🕒 Current timestamp (ms): ");
+    Serial.println(currentTime);
+
+    // Read Firebase pattern and play song
     readFirebaseCommand();
   }
 
-  delay(500);  // Delay to prevent excessive polling
+  delay(1000);  // Check every second here
 }
 
