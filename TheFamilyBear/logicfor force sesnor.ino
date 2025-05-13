@@ -4,7 +4,7 @@
 
 // WiFi credentials
 #define WIFI_SSID "TLU"
-#define WIFI_PASSWORD ""
+#define WIFI_PASSWORD ""  // Add your WiFi password
 
 // Firebase credentials
 #define API_KEY "AIzaSyCYFHx-Sq1v4dl9Ncqa4Hnq6IoaUL7IdDM"
@@ -18,12 +18,10 @@ FirebaseAuth auth;
 FirebaseConfig config;
 
 // FSR sensor pin
-const int fsrPin = 5; // Use a valid analog input pin
-
-// Pickup threshold
+const int fsrPin = 5;
 const int pickupThreshold = 20;
 
-// Timezone info
+// Time settings
 #define NTP_SERVER "pool.ntp.org"
 #define GMT_OFFSET_SEC 3600
 #define DAYLIGHT_OFFSET_SEC 3600
@@ -41,7 +39,7 @@ void connectToWiFi() {
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("\n❌ WiFi failed to connect. Check network or credentials.");
-    while (true) delay(1000);
+    while (true) delay(1000);  // Prevent further execution
   }
 
   Serial.println("\n✅ WiFi connected!");
@@ -49,67 +47,58 @@ void connectToWiFi() {
   Serial.println(WiFi.localIP());
 }
 
+void sendHeartbeat() {
+  if (Firebase.ready()) {
+    time_t now = time(nullptr);
+    if (!Firebase.RTDB.setInt(&fbdo, "/status/bear/lastSeen", now)) {
+      Serial.print("❌ Failed to send heartbeat: ");
+      Serial.println(fbdo.errorReason());
+    } else {
+      Serial.println("🫀 Heartbeat (lastSeen) sent.");
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   pinMode(fsrPin, INPUT);
 
-  // Connect to Wi-Fi
   connectToWiFi();
 
-  // Initialize NTP
+  // Sync time
   configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
-
-  // Wait for valid time
-  Serial.print("Waiting for NTP time...");
-  while (time(nullptr) < 1) {
+  while (time(nullptr) < 100000) {
     delay(1000);
     Serial.print(".");
   }
-  Serial.println("\n✅ Time synchronized!");
+  Serial.println("\n🕒 Time synced");
 
   // Firebase setup
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
   auth.user.email = USER_EMAIL;
   auth.user.password = USER_PASSWORD;
-
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
 }
 
-long long getRealTimestamp() {
-  time_t now = time(nullptr);
-  return (long long)now * 1000;  // Convert to milliseconds
-}
-
 void loop() {
-  // Read raw value from FSR
   int fsrValue = analogRead(fsrPin);
-
-  // Debugging: Print raw value
-  Serial.print("FSR Value: ");
-  Serial.println(fsrValue);
-
-  // Detect pickup
   bool pickedUp = fsrValue > pickupThreshold;
 
-  // Get timestamp
-  long long timestamp = getRealTimestamp();
+  Serial.printf("FSR Value: %d | Picked up: %s\n", fsrValue, pickedUp ? "true" : "false");
 
-  // Prepare JSON for Firebase
-  FirebaseJson fsrJson;
-  fsrJson.set("pickedUp", pickedUp);
-  fsrJson.set("value", fsrValue);
-  fsrJson.set("timestamp", timestamp);
+  if (Firebase.ready()) {
+    if (!Firebase.RTDB.setBool(&fbdo, "/status/bear/fsr", pickedUp)) {
+      Serial.print("❌ FSR update failed: ");
+      Serial.println(fbdo.errorReason());
+    } else {
+      Serial.println("✅ FSR state sent.");
+    }
 
-  // Send to Firebase
-  if (Firebase.RTDB.setJSON(&fbdo, "/status/fsr", &fsrJson)) {
-    Serial.println("✅ FSR data uploaded to Firebase.");
-  } else {
-    Serial.print("❌ Firebase FSR upload failed: ");
-    Serial.println(fbdo.errorReason());
+    sendHeartbeat();  // ⏱️ Send lastSeen timestamp
   }
 
-  delay(1000);  // Delay before next loop
+  delay(1000);
 }
 
