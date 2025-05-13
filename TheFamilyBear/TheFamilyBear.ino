@@ -16,59 +16,18 @@ FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
-// Motor pin
-const int motorPin = 2;
+// Pins
+const int motorPin = 2;  // Motor pin
+const int fsrPin = 5;    // FSR sensor pin
+const int pickupThreshold = 20;  // FSR sensor threshold
 
-// Control flags
-bool stopRequested = false;
-bool vibrationEnabled = true;
+// Global control flag
+volatile bool stopRequested = false;
 
-// Handle serial commands
-void checkSerialCommand() {
-  if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
-    if (command.equalsIgnoreCase("stop")) {
-      stopRequested = true;
-      vibrationEnabled = false;
-      Serial.println("🛑 Vibration disabled.");
-    } else if (command.equalsIgnoreCase("start")) {
-      stopRequested = false;
-      vibrationEnabled = true;
-      Serial.println("✅ Vibration enabled.");
-    }
-  }
-}
-
-void setup() {
-  Serial.begin(115200);
-  pinMode(motorPin, OUTPUT);
-  digitalWrite(motorPin, LOW);
-
-  Serial.println("Type 'stop' or 'start' in Serial Monitor.");
-
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Connecting to WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi connected!");
-
-  config.api_key = API_KEY;
-  config.database_url = DATABASE_URL;
-  auth.user.email = USER_EMAIL;
-  auth.user.password = USER_PASSWORD;
-
-  Firebase.begin(&config, &auth);
-  Firebase.reconnectWiFi(true);
-}
-
-void loop() {
-  checkSerialCommand();
-
-  if (!vibrationEnabled) {
-    delay(1000);
+// Fetch heartbeat data from Firebase and vibrate motor
+void fetchFirebaseHeartbeat() {
+  if (stopRequested) {
+    Serial.println("⛔ Vibration skipped due to stop command.");
     return;
   }
 
@@ -86,20 +45,17 @@ void loop() {
     if (json.get(result, "vibrationFrequencyHz")) vibrationFrequencyHz = result.to<double>();
     if (json.get(result, "timestamp")) timestamp = result.to<long long>();
 
-    Serial.println("Heartbeat Data from Firebase:");
+    Serial.println("Fetched Heartbeat Data from Firebase:");
     Serial.print("Amplitude: "); Serial.println(amplitude);
     Serial.print("BPM: "); Serial.println(beatsPerMinute);
     Serial.print("Frequency: "); Serial.println(vibrationFrequencyHz);
     Serial.print("Timestamp: "); Serial.println(timestamp);
 
-    // Only start vibration if the data is valid
     if (beatsPerMinute > 0 && amplitude > 0.0) {
-      Serial.println("➡️ Starting vibration...");
+      Serial.println("➡️ Starting vibration with Firebase data...");
 
-      // Default vibration period (fallback to 500ms if no frequency is provided)
       int periodMs = 500;
       if (vibrationFrequencyHz > 0.0) {
-        // Calculate period from the frequency (Hz)
         periodMs = (int)(1000.0 / vibrationFrequencyHz);
       }
 
@@ -107,47 +63,95 @@ void loop() {
       Serial.print(periodMs);
       Serial.println(" ms");
 
-      if (Firebase.RTDB.setBool(&fbdo, "/status/bear/vibration", true)) {
-        Serial.println("📤 Sent: vibration = true");
-      }
+      Firebase.RTDB.setBool(&fbdo, "/status/bear/vibration", true);
 
       unsigned long startTime = millis();
-      stopRequested = false;
+      unsigned long lastToggleTime = millis();
+      bool motorOn = false;
 
-      // Vibrating for 5 minutes (300000ms)
-      while (millis() - startTime < 300000) {
-        checkSerialCommand();
+      while (millis() - startTime < 300000) {  // 5 minutes
+        checkSerialCommand();  // Check for stop command
 
         if (stopRequested) {
           digitalWrite(motorPin, LOW);
           Firebase.RTDB.setBool(&fbdo, "/status/bear/vibration", false);
-          Serial.println("⛔ Vibration interrupted.");
+          Serial.println("⛔ Vibration interrupted by user.");
           return;
         }
 
-        // Turn the motor on
-        digitalWrite(motorPin, HIGH);
-        delay(periodMs / 2);  // Half the period for "on" time
+        if (millis() - lastToggleTime >= (periodMs / 2)) {
+          motorOn = !motorOn;
+          digitalWrite(motorPin, motorOn ? HIGH : LOW);
+          lastToggleTime = millis();
+        }
 
-        // Turn the motor off
-        digitalWrite(motorPin, LOW);
-        delay(periodMs / 2);  // Half the period for "off" time
+        delay(1);  // Yield CPU slightly
       }
 
-      // After 5 minutes, stop the vibration
+      digitalWrite(motorPin, LOW);
       Firebase.RTDB.setBool(&fbdo, "/status/bear/vibration", false);
-      Serial.println("✅ Vibration finished. Sent: vibration = false");
-    } else {
-      Serial.println("⚠️ Invalid heartbeat data, skipping vibration.");
+      Serial.println("✅ Vibration finished.");
     }
-
   } else {
     Serial.print("❌ Firebase read failed: ");
     Serial.println(fbdo.errorReason());
   }
-
-  delay(1000);  // Check again in 1 second
 }
 
-  
+// Handle serial commands
+void checkSerialCommand() {
+  if (Serial.available()) {
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+    if (command.equalsIgnoreCase("stop")) {
+      stopRequested = true;
+      digitalWrite(motorPin, LOW);  // Stop motor immediately
+      Firebase.RTDB.setBool(&fbdo, "/status/bear/vibration", false);
+      Serial.println("🛑 Vibration stopped by terminal.");
+    } else if (command.equalsIgnoreCase("start")) {
+      stopRequested = false;
+      Serial.println("✅ Vibration start enabled.");
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(motorPin, OUTPUT);
+  pinMode(fsrPin, INPUT);
+  digitalWrite(motorPin, LOW);
+
+  Serial.println("Type 'stop' or 'start' in Serial Monitor.");
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n✅ WiFi connected!");
+
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  auth.user.email = USER_EMAIL;
+  auth.user.password = USER_PASSWORD;
+
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+}
+
+void loop() {
+  checkSerialCommand();
+
+  int fsrValue = analogRead(fsrPin);
+  Serial.printf("FSR value: %d\n", fsrValue);
+
+  if (fsrValue > pickupThreshold && !stopRequested) {
+    Serial.println("📈 Pickup detected. Fetching heartbeat data from Firebase...");
+    fetchFirebaseHeartbeat();
+  }
+
+  delay(1000);
+}
+
 
