@@ -5,7 +5,7 @@
 
 // Wi-Fi credentials
 #define WIFI_SSID "TLU"
-#define WIFI_PASSWORD ""  
+#define WIFI_PASSWORD ""
 
 // Firebase credentials
 #define API_KEY "AIzaSyCYFHx-Sq1v4dl9Ncqa4Hnq6IoaUL7IdDM"
@@ -28,12 +28,21 @@ const int frequencyRanges[10][2] = {
   {100, 120}, {120, 140}, {140, 160}, {160, 180}, {180, 200}
 };
 
-// Variables for Firebase data
 bool wakeupEnabled = false;
 String scheduledTime = "";
 String lastCheckedMinute = "";
 
-// Handle WiFi connection
+// Send vibration status to Firebase
+void updateVibrationStatus(bool isActive) {
+  if (!Firebase.ready()) return;
+  if (Firebase.RTDB.setBool(&fbdo, "/status/bear/vibration", isActive)) {
+    Serial.printf("📤 Vibration status: %s\n", isActive ? "true" : "false");
+  } else {
+    Serial.print("❌ Failed to update vibration status: ");
+    Serial.println(fbdo.errorReason());
+  }
+}
+
 void connectToWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to WiFi");
@@ -44,7 +53,6 @@ void connectToWiFi() {
   Serial.println("\n✅ WiFi connected.");
 }
 
-// Setup Firebase connection
 void setupFirebase() {
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
@@ -53,7 +61,6 @@ void setupFirebase() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
 
-  // Ensure Firebase is initialized correctly
   unsigned long startMillis = millis();
   while (!Firebase.ready()) {
     Serial.println("Waiting for Firebase to initialize...");
@@ -66,68 +73,35 @@ void setupFirebase() {
   Serial.println("✅ Firebase initialized.");
 }
 
-// Fetch wakeup data from Firebase
 void fetchWakeupData() {
   if (Firebase.RTDB.getJSON(&fbdo, "/commands/wakeupmode")) {
     FirebaseJson& json = fbdo.jsonObject();
     FirebaseJsonData result;
-
-    // Get values from JSON
-    if (json.get(result, "enabled")) {
-      wakeupEnabled = result.to<bool>();
-    }
-    if (json.get(result, "time")) {
-      scheduledTime = result.to<String>();
-    }
-    if (json.get(result, "timestamp")) {
-      unsigned long timestamp = result.to<unsigned long>();
-      Serial.print("🕓 Firebase timestamp = ");
-      Serial.println(timestamp);
-    }
-
-    Serial.print("✅ Firebase: enabled = ");
-    Serial.println(wakeupEnabled);
-    Serial.print("🕒 Firebase time = ");
-    Serial.println(scheduledTime);
+    if (json.get(result, "enabled")) wakeupEnabled = result.to<bool>();
+    if (json.get(result, "time")) scheduledTime = result.to<String>();
   } else {
-    Serial.println("❌ Failed to fetch data from Firebase.");
+    Serial.println("❌ Failed to fetch wakeup data.");
     Serial.println(fbdo.errorReason());
   }
 }
 
-// Get current time in Estonia timezone
 String getCurrentTimeEstonia() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
     Serial.println("❌ Failed to get local time");
     return "";
   }
-
   char buffer[6];
   strftime(buffer, sizeof(buffer), "%H:%M", &timeinfo);
   return String(buffer);
-}
-
-// Send vibration status to Firebase
-void updateVibrationStatus(bool isActive) {
-  if (!Firebase.ready()) return;
-  if (Firebase.RTDB.setBool(&fbdo, "/status/bear/vibration", isActive)) {
-    Serial.printf("📤 Vibration status updated: %s\n", isActive ? "true" : "false");
-  } else {
-    Serial.print("❌ Failed to update vibration status: ");
-    Serial.println(fbdo.errorReason());
-  }
 }
 
 void setup() {
   Serial.begin(115200);
   pinMode(motorPin, OUTPUT);
   digitalWrite(motorPin, LOW);
-
   connectToWiFi();
-
   configTime(10800, 0, "pool.ntp.org", "time.nist.gov");
-
   setupFirebase();
 }
 
@@ -156,7 +130,7 @@ void loop() {
 }
 
 void runMotorSequence() {
-  updateVibrationStatus(true);  // Send "true" when motor starts
+  updateVibrationStatus(true);  // motor on
   unsigned long startMillis = millis();
   unsigned long totalElapsedTime = 0;
   unsigned long pauseDuration = (maxRunTime - (cycleDuration * 10)) / 10;
@@ -168,7 +142,6 @@ void runMotorSequence() {
     int fMin = frequencyRanges[cycle][0];
     int fMax = frequencyRanges[cycle][1];
     Serial.printf("🔁 Cycle %d: %d Hz to %d Hz\n", cycle + 1, fMin, fMax);
-
     unsigned long cycleEndTime = millis() + cycleDuration;
 
     if (cycle == 0) {
@@ -210,8 +183,10 @@ void runMotorSequence() {
   }
 
   digitalWrite(motorPin, LOW);
-  updateVibrationStatus(false);  // Send "false" when motor stops
+  updateVibrationStatus(false);  // motor off
   Serial.println("✅ Wake-up vibration complete.");
 }
+
+
 
 
