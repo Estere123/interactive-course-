@@ -8,36 +8,46 @@
 #define WIFI_SSID "TLU"
 #define WIFI_PASSWORD ""
 
-// Firebase credentials for RTDB
+// Firebase credentials
 #define API_KEY "AIzaSyCYFHx-Sq1v4dl9Ncqa4Hnq6IoaUL7IdDM"
 #define DATABASE_URL "https://familybear-ab556-default-rtdb.europe-west1.firebasedatabase.app"
 #define USER_EMAIL "estere12@tlu.ee"
 #define USER_PASSWORD "Bear2025"
 
-// Firebase path for sound commands (using Firebase ESP Client)
+// Firebase paths
 #define FIREBASE_PATH "/commands/sound"
 
 // Pins
 #define FSR_PIN 5
 #define BUZZER_PIN 19
+#define motorPin 2
 
-// Threshold for picking up bear
+// Threshold
 const int pickupThreshold = 20;
 
-// Time settings
+// Motor settings
+const int cycleDuration = 8000;
+const unsigned long maxRunTime = 180000;
+
+const int frequencyRanges[10][2] = {
+  {20, 20}, {20, 40}, {40, 80}, {60, 80}, {80, 100},
+  {100, 120}, {120, 140}, {140, 160}, {160, 180}, {180, 200}
+};
+
+bool wakeupEnabled = false;
+String scheduledTime = "";
+String lastCheckedMinute = "";
+
 #define NTP_SERVER "pool.ntp.org"
-#define GMT_OFFSET_SEC 3600
+#define GMT_OFFSET_SEC 7200
 #define DAYLIGHT_OFFSET_SEC 3600
+#define REST 0
 
-#define REST 0  // Define REST note
-
-// Firebase objects for RTDB
+// Firebase objects
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 long long lastPlayedTimestamp = 0;
-
-
 
 // Full Melody and durations for different songs
 
@@ -185,14 +195,19 @@ long durations3[] = {
 // Function declarations
 void connectToWiFi();
 void sendHeartbeat();
-long long getRealTimestamp();
-void sendFirebaseCommand(String pattern);
-void playSong(long melody[], long durations[], int length, unsigned long playMillis);
+void updateVibrationStatus(bool isActive);
+void fetchWakeupData();
 void readFirebaseCommand();
+void runMotorSequence();
+void playSong(long melody[], long durations[], int length, unsigned long playMillis);
+String getCurrentTimeEstonia();
+long long getRealTimestamp();
 
 void setup() {
   Serial.begin(115200);
   pinMode(FSR_PIN, INPUT);
+  pinMode(motorPin, OUTPUT);
+  digitalWrite(motorPin, LOW);
   connectToWiFi();
 
   // Sync time
@@ -203,7 +218,7 @@ void setup() {
   }
   Serial.println("\n🕒 Time synced");
 
-  // Setup Firebase Realtime DB
+  // Setup Firebase
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
   auth.user.email = USER_EMAIL;
@@ -213,88 +228,190 @@ void setup() {
 }
 
 void loop() {
-  // Read FSR sensor for bear status
+  if (!Firebase.ready()) {
+    Serial.println("Firebase not ready...");
+    delay(5000);
+    return;
+  }
+
+  // FSR logic
   int fsrValue = analogRead(FSR_PIN);
   bool pickedUp = fsrValue > pickupThreshold;
   Serial.printf("FSR Value: %d | Picked up: %s\n", fsrValue, pickedUp ? "true" : "false");
 
-  // Update Firebase with bear status and timestamp heartbeat
-  if (Firebase.ready()) {
-    if (!Firebase.RTDB.setBool(&fbdo, "/status/bear/fsr", pickedUp)) {
-      Serial.print("❌ FSR update failed: ");
-      Serial.println(fbdo.errorReason());
-    } else {
-      Serial.println("✅ FSR state sent.");
-    }
+  // Firebase update
+  if (Firebase.RTDB.setBool(&fbdo, "/status/bear/fsr", pickedUp)) {
+    Serial.println("✅ FSR state sent.");
     sendHeartbeat();
+  } else {
+    Serial.print("❌ FSR update failed: ");
+    Serial.println(fbdo.errorReason());
   }
 
-  // Check if FSR is pressed for 10 seconds to trigger playing music
+  // Long press detection
   static unsigned long pressedStart = 0;
   if (pickedUp) {
     if (pressedStart == 0) pressedStart = millis();
     else if (millis() - pressedStart >= 10000) {
       Serial.println("⏱️ Force sensor pressed for > 10 seconds!");
-
-      // Read Firebase pattern and play song for 2 minutes (120000 ms)
       readFirebaseCommand();
-
-      // Reset pressedStart to avoid repeated triggers
       pressedStart = 0;
     }
   } else {
     pressedStart = 0;
   }
 
+  // Wakeup check
+  fetchWakeupData();
+  String currentTime = getCurrentTimeEstonia();
+  Serial.print("⌚ Current time: ");
+  Serial.println(currentTime);
+
+  if (wakeupEnabled && currentTime == scheduledTime && currentTime != lastCheckedMinute) {
+    Serial.println("✅ Conditions met: running motor sequence.");
+    runMotorSequence();
+    lastCheckedMinute = currentTime;
+  } else {
+    Serial.println("⏸️ Conditions not met or already triggered.");
+  }
+
   delay(1000);
 }
 
-// Send lastSeen timestamp to Firebase
+// ----------- SUPPORT FUNCTIONS -----------
+
+void connectToWiFi() {
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n✅ WiFi connected!");
+}
+
 void sendHeartbeat() {
-  if (Firebase.ready()) {
-    time_t now = time(nullptr);
-    if (!Firebase.RTDB.setInt(&fbdo, "/status/bear/lastSeen", now)) {
-      Serial.print("❌ Failed to send heartbeat: ");
-      Serial.println(fbdo.errorReason());
-    } else {
-      Serial.println("🫀 Heartbeat (lastSeen) sent.");
-    }
+  time_t now = time(nullptr);
+  if (!Firebase.RTDB.setInt(&fbdo, "/status/bear/lastSeen", now)) {
+    Serial.print("❌ Failed to send heartbeat: ");
+    Serial.println(fbdo.errorReason());
+  } else {
+    Serial.println("🫀 Healthchec sent.");
   }
 }
 
-// Get current timestamp in milliseconds
+void updateVibrationStatus(bool isActive) {
+  if (!Firebase.ready()) return;
+  if (Firebase.RTDB.setBool(&fbdo, "/status/bear/vibration", isActive)) {
+    Serial.printf("📤 Vibration status: %s\n", isActive ? "true" : "false");
+  } else {
+    Serial.print("❌ Failed to update vibration status: ");
+    Serial.println(fbdo.errorReason());
+  }
+}
+
+void fetchWakeupData() {
+  if (Firebase.RTDB.getJSON(&fbdo, "/commands/wakeupmode")) {
+    FirebaseJson& json = fbdo.jsonObject();
+    FirebaseJsonData result;
+    if (json.get(result, "enabled")) wakeupEnabled = result.to<bool>();
+    if (json.get(result, "time")) scheduledTime = result.to<String>();
+  } else {
+    Serial.println("❌ Failed to fetch wakeup data.");
+    Serial.println(fbdo.errorReason());
+  }
+}
+
+String getCurrentTimeEstonia() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("❌ Failed to get local time");
+    return "";
+  }
+  char buffer[6];
+  strftime(buffer, sizeof(buffer), "%H:%M", &timeinfo);
+  return String(buffer);
+}
+
+void runMotorSequence() {
+  updateVibrationStatus(true);
+  unsigned long startMillis = millis();
+  unsigned long pauseDuration = (maxRunTime - (cycleDuration * 10)) / 10;
+
+  for (int cycle = 0; cycle < 10; cycle++) {
+    if (millis() - startMillis >= maxRunTime) break;
+
+    int fMin = frequencyRanges[cycle][0];
+    int fMax = frequencyRanges[cycle][1];
+    Serial.printf("🔁 Cycle %d: %d Hz to %d Hz\n", cycle + 1, fMin, fMax);
+    unsigned long cycleEndTime = millis() + cycleDuration;
+
+    if (cycle == 0) {
+      int period = 1000 / 20;
+      int onTime = period / 2;
+      int offTime = period - onTime;
+
+      while (millis() < cycleEndTime) {
+        digitalWrite(motorPin, HIGH);
+        delay(onTime);
+        digitalWrite(motorPin, LOW);
+        delay(offTime);
+      }
+    } else {
+      unsigned long startTime = millis();
+      unsigned long lastPrintTime = 0;
+
+      while (millis() < cycleEndTime) {
+        unsigned long elapsed = millis() - startTime;
+        int currentFreq = map(elapsed, 0, cycleDuration, fMin, fMax);
+        int period = 1000 / currentFreq;
+        int onTime = period / 2;
+        int offTime = period - onTime;
+
+        if (millis() - lastPrintTime >= 500) {
+          Serial.printf("  🔊 Frequency: %d Hz\n", currentFreq);
+          lastPrintTime = millis();
+        }
+
+        digitalWrite(motorPin, HIGH);
+        delay(onTime);
+        digitalWrite(motorPin, LOW);
+        delay(offTime);
+      }
+    }
+
+    digitalWrite(motorPin, LOW);
+    delay(pauseDuration);
+
+    digitalWrite(motorPin, LOW);
+    delay(pauseDuration);
+  }
+
+  digitalWrite(motorPin, LOW);
+  updateVibrationStatus(false);
+  Serial.println("✅ Wake-up vibration complete.");
+}
+
 long long getRealTimestamp() {
   time_t now = time(nullptr);
   return now > 0 ? (long long)now * 1000 : 0;
 }
 
-// Play song based on pattern arrays — now loops for playMillis ms
 void playSong(long melody[], long durations[], int length, unsigned long playMillis) {
   Serial.println("🎵 Playing song...");
   unsigned long startTime = millis();
   int i = 0;
-
   while (millis() - startTime < playMillis) {
     int noteDuration = 1000 / durations[i];
-    int pauseBetweenNotes = noteDuration * 1.30;
-
     if (melody[i] != REST) tone(BUZZER_PIN, melody[i], noteDuration);
-    delay(pauseBetweenNotes);
+    delay(noteDuration * 1.3);
     noTone(BUZZER_PIN);
-
-    i++;
-    if (i >= length) i = 0;  // Loop the melody
+    i = (i + 1) % length;
   }
   Serial.println("✅ Song finished.");
 }
 
-// Read Firebase command and play corresponding song using Firebase ESP Client library
 void readFirebaseCommand() {
-  if (!Firebase.ready()) {
-    Serial.println("⚠️ Firebase not ready!");
-    return;
-  }
-
   if (!Firebase.RTDB.getJSON(&fbdo, FIREBASE_PATH)) {
     Serial.print("❌ Failed to read command: ");
     Serial.println(fbdo.errorReason());
@@ -305,19 +422,17 @@ void readFirebaseCommand() {
   Serial.println("📥 Firebase Response: " + payload);
 
   DynamicJsonDocument doc(1024);
-  DeserializationError error = deserializeJson(doc, payload);
-  if (error) {
-    Serial.print("❌ JSON parse failed: ");
-    Serial.println(error.c_str());
+  if (deserializeJson(doc, payload)) {
+    Serial.println("❌ JSON parse failed.");
     return;
   }
 
   String songPattern = doc["pattern"].as<String>();
-
   int length;
+
   if (songPattern == "potter1") {
     length = sizeof(durations1) / sizeof(durations1[0]);
-    playSong(melody1, durations1, length, 120000);  // 2 minutes
+    playSong(melody1, durations1, length, 120000);
   } else if (songPattern == "merryxmas") {
     length = sizeof(durations2) / sizeof(durations2[0]);
     playSong(melody2, durations2, length, 120000);
@@ -329,13 +444,3 @@ void readFirebaseCommand() {
   }
 }
 
-// Connect to WiFi
-void connectToWiFi() {
-  Serial.printf("Connecting to %s ", WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println(" connected");
-}
