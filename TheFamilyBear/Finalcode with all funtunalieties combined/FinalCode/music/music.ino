@@ -31,6 +31,7 @@ const unsigned long maxRunTime = 180000;
 
 // Heartbeat tracking
 unsigned long lastHeartbeatSent = 0;
+unsigned long lastHeartbeatTime = 0;
 
 const int frequencyRanges[10][2] = {
   {20, 20}, {20, 40}, {40, 80}, {60, 80}, {80, 100},
@@ -51,6 +52,10 @@ FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 long long lastPlayedTimestamp = 0;
+
+// Global flag to stop vibration from serial command
+bool stopRequested = false;
+bool vibrationState = false;
 
 // Full Melody and durations for different songs
 
@@ -205,12 +210,30 @@ void runMotorSequence();
 void playSong(long melody[], long durations[], int length, unsigned long playMillis);
 String getCurrentTimeEstonia();
 long long getRealTimestamp();
+void fetchFirebaseHeartbeat();
+void checkSerialCommand();
+
+void checkSerialCommand() {
+  if (Serial.available() > 0) {
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+    if (command.equalsIgnoreCase("stop")) {
+      stopRequested = true;
+      Serial.println("Stop command received.");
+    } else if (command.equalsIgnoreCase("start")) {
+      stopRequested = false;
+      Serial.println("Start command received.");
+    }
+  }
+}
+
 
 void setup() {
   Serial.begin(115200);
   pinMode(FSR_PIN, INPUT);
   pinMode(motorPin, OUTPUT);
   digitalWrite(motorPin, LOW);
+   Serial.println("Type 'stop' or 'start' in Serial Monitor.");
   connectToWiFi();
 
   // Sync time
@@ -228,6 +251,8 @@ void setup() {
   auth.user.password = USER_PASSWORD;
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
+
+  updateVibrationStatus(false);  // Initial vibration state off
 }
 
 void loop() {
@@ -236,7 +261,7 @@ void loop() {
     delay(5000);
     return;
   }
-
+     checkSerialCommand();
   // FSR logic
   int fsrValue = analogRead(FSR_PIN);
   bool pickedUp = fsrValue > pickupThreshold;
@@ -260,6 +285,7 @@ void loop() {
       readFirebaseCommand();
       pressedStart = 0;
     }
+      fetchFirebaseHeartbeat();
   } else {
     pressedStart = 0;
   }
@@ -303,8 +329,70 @@ void sendHeartbeat() {
   }
 }
 
-bool vibrationState = false;
+// Recive parents hearbeat 
+void fetchFirebaseHeartbeat() {
+  if (stopRequested) {
+    Serial.println("⛔ Vibration skipped due to stop command.");
+    updateVibrationStatus(false);
+    digitalWrite(motorPin, LOW);
+    return;
+  }
 
+  if (Firebase.RTDB.getJSON(&fbdo, "/commands/heartbeat")) {
+    FirebaseJson &json = fbdo.to<FirebaseJson>();
+    FirebaseJsonData result;
+
+    float amplitude = 0.0;
+    int bpm = 0;
+    double freqHz = 0.0;
+
+    if (json.get(result, "amplitude")) amplitude = result.to<float>();
+    if (json.get(result, "beatsPerMinute")) bpm = result.to<int>();
+    if (json.get(result, "vibrationFrequencyHz")) freqHz = result.to<double>();
+
+    if (bpm > 0 && amplitude > 0.0) {
+      Serial.println("➡️ Starting vibration...");
+
+      int periodMs = (freqHz > 0.0) ? (int)(1000.0 / freqHz) : 500;
+
+      updateVibrationStatus(true);  // Motor ON
+
+      unsigned long startTime = millis();
+      bool motorOn = false;
+
+      while (millis() - startTime < 300000) {  // Run for 5 minutes (300,000 ms)
+        checkSerialCommand();
+        if (stopRequested) {
+          digitalWrite(motorPin, LOW);
+          updateVibrationStatus(false);
+          Serial.println("🛑 Vibration interrupted.");
+          return;
+        }
+
+        motorOn = !motorOn;
+        digitalWrite(motorPin, motorOn ? HIGH : LOW);
+        delay(periodMs / 2);
+
+        // Send heartbeat every 1 second while vibration runs
+        unsigned long now = millis();
+        if (now - lastHeartbeatTime > 1000) {  // every 1 sec
+          lastHeartbeatTime = now;
+          sendHeartbeat();
+        }
+      }
+
+      digitalWrite(motorPin, LOW);
+      updateVibrationStatus(false);  // Motor OFF
+      Serial.println("✅ Vibration complete.");
+    } else {
+      updateVibrationStatus(false);  // Invalid data
+    }
+  } else {
+    Serial.print("❌ Firebase read failed: ");
+    Serial.println(fbdo.errorReason());
+    updateVibrationStatus(false);  // Fetch error
+  }
+}
 void updateVibrationStatus(bool isActive) {
   if (vibrationState == isActive) return; // no change, skip
   if (!Firebase.ready()) return;
@@ -316,6 +404,8 @@ void updateVibrationStatus(bool isActive) {
     Serial.println(fbdo.errorReason());
   }
 }
+
+
 
 void fetchWakeupData() {
   if (Firebase.RTDB.getJSON(&fbdo, "/commands/wakeupmode")) {
