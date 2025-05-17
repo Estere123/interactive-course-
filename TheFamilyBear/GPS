@@ -1,0 +1,141 @@
+#include <WiFi.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <TinyGPS++.h>
+#include <HardwareSerial.h>
+
+// WiFi credentials
+#define WIFI_SSID "TLU"
+#define WIFI_PASSWORD ""
+
+// Firebase Realtime Database URL
+#define FIREBASE_URL "https://familybear-ab556-default-rtdb.europe-west1.firebasedatabase.app/status/gps.json"
+
+// GPS module on UART1
+HardwareSerial SerialGPS(1);
+#define GPS_RX 6  // GPS TX --> ESP32 RX1 (GPIO6)
+#define GPS_TX 7  // GPS RX --> ESP32 TX1 (GPIO7)
+
+TinyGPSPlus gps;
+
+// Safe zone center
+const double SAFE_LAT = 59.438940;
+const double SAFE_LNG = 24.772575;
+const double SAFE_RADIUS_METERS = 50.0;
+
+void setup() {
+  Serial.begin(115200);                         
+  SerialGPS.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);  // GPS module
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected to WiFi");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  Serial.println("GPS Safe Zone Monitor Initialized");
+  Serial.println("Waiting for GPS signal...");
+}
+
+void loop() {
+  static unsigned long lastUpdate = 0;
+  static unsigned long lastAlert = 0;
+  static unsigned long lastFallbackSent = 0;
+
+  while (SerialGPS.available() > 0) {
+    gps.encode(SerialGPS.read());
+  }
+
+  // Regular update if GPS location is valid and updated
+  if (gps.location.isValid() && gps.location.isUpdated()) {
+    if (millis() - lastUpdate > 2000) {  // Update every 2 seconds
+      lastUpdate = millis();
+
+      double lat = gps.location.lat();
+      double lng = gps.location.lng();
+      double distance = TinyGPSPlus::distanceBetween(lat, lng, SAFE_LAT, SAFE_LNG);
+      bool insideGeofence = distance <= SAFE_RADIUS_METERS;
+
+      Serial.println("Location updated:");
+      Serial.print("Lat: "); Serial.println(lat, 6);
+      Serial.print("Lng: "); Serial.println(lng, 6);
+      Serial.print("Distance from safe zone: ");
+      Serial.print(distance, 2); Serial.println(" meters");
+      Serial.print("Geofence status: ");
+      Serial.println(insideGeofence ? "Inside" : "Outside");
+
+      // Create JSON payload
+      String payload = "{";
+      payload += "\"geofence\": " + String(insideGeofence ? "true" : "false");
+      payload += ",";
+      payload += "\"latitude\": " + String(lat, 6);
+      payload += ",";
+      payload += "\"longitude\": " + String(lng, 6);
+      payload += "}";
+
+      // Send to Firebase
+      if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        http.begin(FIREBASE_URL);
+        http.addHeader("Content-Type", "application/json");
+
+        int httpResponseCode = http.PUT(payload);
+        if (httpResponseCode > 0) {
+          Serial.print("Firebase response: ");
+          Serial.println(httpResponseCode);
+        } else {
+          Serial.print("Failed to send to Firebase: ");
+          Serial.println(http.errorToString(httpResponseCode).c_str());
+        }
+        http.end();
+      } else {
+        Serial.println("WiFi disconnected. Reconnecting...");
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+      }
+    }
+  }
+
+  // Fallback: No valid GPS location for 5 seconds
+  else if (millis() - lastUpdate > 5000 && millis() - lastFallbackSent > 30000) {
+    lastUpdate = millis();
+    lastFallbackSent = millis();
+
+    Serial.println("⚠️ No valid GPS data. Sending geofence: false as fallback");
+
+    String fallbackPayload = "{";
+    fallbackPayload += "\"geofence\": false";
+    fallbackPayload += "}";
+
+    if (WiFi.status() == WL_CONNECTED) {
+      HTTPClient http;
+      http.begin(FIREBASE_URL);
+      http.addHeader("Content-Type", "application/json");
+
+      int httpResponseCode = http.PUT(fallbackPayload);
+      if (httpResponseCode > 0) {
+        Serial.print("Fallback Firebase response: ");
+        Serial.println(httpResponseCode);
+      } else {
+        Serial.print("Failed to send fallback to Firebase: ");
+        Serial.println(http.errorToString(httpResponseCode).c_str());
+      }
+      http.end();
+    } else {
+      Serial.println("WiFi disconnected. Reconnecting...");
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    }
+  }
+
+  // Alert every 5 seconds if no satellites
+  if (millis() - lastAlert > 5000) {
+    lastAlert = millis();
+    if (gps.satellites.value() == 0) {
+      Serial.println("\n⚠️ NO SATELLITES DETECTED - check GPS module & antenna");
+    }
+  }
+}
+
