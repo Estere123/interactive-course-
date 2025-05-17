@@ -29,6 +29,9 @@ const int pickupThreshold = 20;
 const int cycleDuration = 8000;
 const unsigned long maxRunTime = 180000;
 
+// Heartbeat tracking
+unsigned long lastHeartbeatSent = 0;
+
 const int frequencyRanges[10][2] = {
   {20, 20}, {20, 40}, {40, 80}, {60, 80}, {80, 100},
   {100, 120}, {120, 140}, {140, 160}, {160, 180}, {180, 200}
@@ -300,10 +303,14 @@ void sendHeartbeat() {
   }
 }
 
+bool vibrationState = false;
+
 void updateVibrationStatus(bool isActive) {
+  if (vibrationState == isActive) return; // no change, skip
   if (!Firebase.ready()) return;
   if (Firebase.RTDB.setBool(&fbdo, "/status/bear/vibration", isActive)) {
     Serial.printf("📤 Vibration status: %s\n", isActive ? "true" : "false");
+    vibrationState = isActive;
   } else {
     Serial.print("❌ Failed to update vibration status: ");
     Serial.println(fbdo.errorReason());
@@ -356,6 +363,10 @@ void runMotorSequence() {
         delay(onTime);
         digitalWrite(motorPin, LOW);
         delay(offTime);
+        if (millis() - lastHeartbeatSent >= 1000) {
+          sendHeartbeat();
+          lastHeartbeatSent = millis();
+        }
       }
     } else {
       unsigned long startTime = millis();
@@ -377,20 +388,31 @@ void runMotorSequence() {
         delay(onTime);
         digitalWrite(motorPin, LOW);
         delay(offTime);
+        if (millis() - lastHeartbeatSent >= 1000) {
+          sendHeartbeat();
+          lastHeartbeatSent = millis();
+        }
       }
     }
 
     digitalWrite(motorPin, LOW);
-    delay(pauseDuration);
 
-    digitalWrite(motorPin, LOW);
-    delay(pauseDuration);
+    // Replace delay with heartbeat sending loop during pause
+    unsigned long pauseStart = millis();
+    while (millis() - pauseStart < pauseDuration) {
+      if (millis() - lastHeartbeatSent >= 1000) {
+        sendHeartbeat();
+        lastHeartbeatSent = millis();
+      }
+      delay(10);  // small delay to avoid CPU hogging
+    }
   }
 
   digitalWrite(motorPin, LOW);
   updateVibrationStatus(false);
   Serial.println("✅ Wake-up vibration complete.");
 }
+
 
 long long getRealTimestamp() {
   time_t now = time(nullptr);
@@ -401,10 +423,25 @@ void playSong(long melody[], long durations[], int length, unsigned long playMil
   Serial.println("🎵 Playing song...");
   unsigned long startTime = millis();
   int i = 0;
+ 
   while (millis() - startTime < playMillis) {
     int noteDuration = 1000 / durations[i];
-    if (melody[i] != REST) tone(BUZZER_PIN, melody[i], noteDuration);
-    delay(noteDuration * 1.3);
+
+    if (melody[i] != REST) {
+      tone(BUZZER_PIN, melody[i], noteDuration);
+    }
+
+    // Delay in smaller chunks to allow heartbeat updates:
+    unsigned long noteStart = millis();
+    while (millis() - noteStart < noteDuration * 1.3) {
+      // Send heartbeat every 1 second while playing
+      if (millis() - lastHeartbeatSent >= 1000) {
+        sendHeartbeat();
+        lastHeartbeatSent = millis();
+      }
+      delay(10); // small delay to not block too long
+    }
+
     noTone(BUZZER_PIN);
     i = (i + 1) % length;
   }
