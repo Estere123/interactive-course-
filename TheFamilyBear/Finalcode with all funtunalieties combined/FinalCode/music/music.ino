@@ -3,6 +3,10 @@
 #include <WiFiClientSecure.h>
 #include "pitches.h"
 #include <ArduinoJson.h>
+#include <TinyGPS++.h>
+#include <HardwareSerial.h>
+#include <math.h> // for cos(), radians()
+
 
 // WiFi credentials
 #define WIFI_SSID "TLU"
@@ -16,11 +20,22 @@
 
 // Firebase paths
 #define FIREBASE_PATH "/commands/sound"
+#define FIREBASE_URL "https://familybear-ab556-default-rtdb.europe-west1.firebasedatabase.app/status/gps.json"
 
 // Pins
 #define FSR_PIN 5
 #define BUZZER_PIN 19
 #define motorPin 2
+
+#define GPS_RX 6  // GPS TX --> ESP32 RX1 (GPIO6)
+#define GPS_TX 7  // GPS RX --> ESP32 TX1 (GPIO7)
+
+
+
+
+// Simulation control
+bool simulateGPS = false;
+bool simulateInside = false;
 
 // Threshold
 const int pickupThreshold = 20;
@@ -33,29 +48,49 @@ const unsigned long maxRunTime = 180000;
 unsigned long lastHeartbeatSent = 0;
 unsigned long lastHeartbeatTime = 0;
 
+
+
+//Mix and Max freequencies for wakeup mode cycles
 const int frequencyRanges[10][2] = {
   {20, 20}, {20, 40}, {40, 80}, {60, 80}, {80, 100},
   {100, 120}, {120, 140}, {140, 160}, {160, 180}, {180, 200}
 };
 
+//Needed to acuratly reflect vibration status on the app 
 bool wakeupEnabled = false;
 String scheduledTime = "";
 String lastCheckedMinute = "";
 
+// defining estonian summer timezone
 #define NTP_SERVER "pool.ntp.org"
 #define GMT_OFFSET_SEC 7200
 #define DAYLIGHT_OFFSET_SEC 3600
 #define REST 0
 
-// Firebase objects
+//  objects
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
-long long lastPlayedTimestamp = 0;
+TinyGPSPlus gps;
+HardwareSerial SerialGPS(1);
+
+
+// Safe zone center
+const double SAFE_LAT = 59.438940;
+const double SAFE_LNG = 24.772575;
+const double SAFE_RADIUS_METERS = 50.0;
+
+
 
 // Global flag to stop vibration from serial command
 bool stopRequested = false;
 bool vibrationState = false;
+
+long long lastPlayedTimestamp = 0;
+
+// ==== GPS OFFSET ====
+double meters_per_degree_lon = 111320 * cos(radians(SAFE_LAT));
+double offset_lon = 55.0 / meters_per_degree_lon;
 
 // Full Melody and durations for different songs
 
@@ -98,7 +133,7 @@ long melody1[] = {
   NOTE_G4
 };
 long durations1[] = {
-    2, 4,
+  2, 4,
   4, 8, 4,
   2, 4,
   2, 
@@ -147,7 +182,7 @@ long melody2[] = {
   NOTE_D5, NOTE_G5
 };
 long durations2[] = {
-    8, 8, 4,
+  8, 8, 4,
   8, 8, 4,
   8, 8, 8, 8,
   2,
@@ -179,7 +214,7 @@ long melody3[] = {
   NOTE_G4, NOTE_E4, NOTE_D4, NOTE_E4, NOTE_E4, NOTE_E4
 };
 long durations3[] = {
-    2, 4, 8, 8, 
+  2, 4, 8, 8, 
   4, 8, 8, 4, 8, 8,
   8, 8,  8, 8, 8, 8, 8, 8,   
   2, 16, 16, 16, 16, 
@@ -212,7 +247,10 @@ String getCurrentTimeEstonia();
 long long getRealTimestamp();
 void fetchFirebaseHeartbeat();
 void checkSerialCommand();
+void handleGPS();
+void sendToFirebaseGPS(String payload);
 
+//Commands to simulate from terminal 
 void checkSerialCommand() {
   if (Serial.available() > 0) {
     String command = Serial.readStringUntil('\n');
@@ -223,6 +261,19 @@ void checkSerialCommand() {
     } else if (command.equalsIgnoreCase("start")) {
       stopRequested = false;
       Serial.println("Start command received.");
+    } else if (command.equalsIgnoreCase("inside")) {
+      simulateGPS = true;
+      simulateInside = true;
+      Serial.println("✅ Simulation: INSIDE safe zone");
+    } else if (command.equalsIgnoreCase("outside")) {
+      simulateGPS = true;
+      simulateInside = false;
+      Serial.println("✅ Simulation: OUTSIDE safe zone");
+    } else if (command.equalsIgnoreCase("real")) {
+      simulateGPS = false;
+      Serial.println("✅ Switched to REAL GPS data");
+    } else {
+      Serial.println("❓ Unknown command");
     }
   }
 }
@@ -244,7 +295,7 @@ void setup() {
   }
   Serial.println("\n🕒 Time synced");
 
-  // Setup Firebase
+  // Settingup Firebase
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
   auth.user.email = USER_EMAIL;
@@ -303,12 +354,63 @@ void loop() {
   } else {
     Serial.println("⏸️ Conditions not met or already triggered.");
   }
+   handleGPS(); 
+  delay(1000);
+}
+
+//Logic about GPS
+
+void handleGPS() {
+  static unsigned long lastUpdate = 0;
+  static unsigned long lastAlert = 0;
+  static unsigned long lastFallbackSent = 0;
+
+  double lat, lng;
+  bool insideGeofence = false;
+
+if (simulateGPS) {
+    lat = SAFE_LAT;
+    lng = simulateInside ? SAFE_LNG : (SAFE_LNG + offset_lon);
+    insideGeofence = TinyGPSPlus::distanceBetween(lat, lng, SAFE_LAT, SAFE_LNG) <= SAFE_RADIUS_METERS;
+  } else {
+    while (SerialGPS.available() > 0) gps.encode(SerialGPS.read());
+
+    if (gps.location.isValid() && gps.location.isUpdated()) {
+      lat = gps.location.lat();
+      lng = gps.location.lng();
+      insideGeofence = TinyGPSPlus::distanceBetween(lat, lng, SAFE_LAT, SAFE_LNG) <= SAFE_RADIUS_METERS;
+    } else if (millis() - lastUpdate > 5000 && millis() - lastFallbackSent > 30000) {
+      lastFallbackSent = millis();
+      String fallbackPayload = "{\"geofence\": false}";
+      sendToFirebaseGPS(fallbackPayload);
+      return;
+    }
+  }
+
+  if (millis() - lastUpdate > 2000 && (simulateGPS || gps.location.isValid())) {
+    lastUpdate = millis();
+    String payload = "{";
+    payload += "\"geofence\": " + String(insideGeofence ? "true" : "false");
+    payload += ",\"latitude\": " + String(lat, 6);
+    payload += ",\"longitude\": " + String(lng, 6);
+    payload += "}";
+    sendToFirebaseGPS(payload);
+  }
+
+  // Alert for no satellites
+  if (!simulateGPS && millis() - lastAlert > 5000) {
+    lastAlert = millis();
+    if (gps.satellites.value() == 0) {
+      Serial.println("⚠️ NO SATELLITES DETECTED");
+    }
+  }
 
   delay(1000);
 }
 
 // ----------- SUPPORT FUNCTIONS -----------
 
+//Connecting ro wifi
 void connectToWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to WiFi");
@@ -319,17 +421,30 @@ void connectToWiFi() {
   Serial.println("\n✅ WiFi connected!");
 }
 
+//Sending healthcheck to firebase so in the appit it is possible to see if the bear is connected
 void sendHeartbeat() {
   time_t now = time(nullptr);
   if (!Firebase.RTDB.setInt(&fbdo, "/status/bear/lastSeen", now)) {
     Serial.print("❌ Failed to send heartbeat: ");
     Serial.println(fbdo.errorReason());
   } else {
-    Serial.println("🫀 Healthchec sent.");
+    Serial.println("🫀 Healthcheck sent.");
   }
 }
 
-// Recive parents hearbeat 
+//Sending GPS data to firebase 
+void sendToFirebaseGPS(String payloadStr) {
+  FirebaseJson json;
+  json.setJsonData(payloadStr);  // Converting the String to FirebaseJson format
+  if (Firebase.RTDB.setJSON(&fbdo, "/status/gps", &json)) {
+    Serial.println("📡 GPS data sent to Firebase.");
+  } else {
+    Serial.print("❌ Failed to send GPS data: ");
+    Serial.println(fbdo.errorReason());
+  }
+}
+
+// Reciving parents hearbeat 
 void fetchFirebaseHeartbeat() {
   if (stopRequested) {
     Serial.println("⛔ Vibration skipped due to stop command.");
@@ -393,6 +508,8 @@ void fetchFirebaseHeartbeat() {
     updateVibrationStatus(false);  // Fetch error
   }
 }
+
+//Updating vibration status so on the up it ispossible to see if vibration is on or off
 void updateVibrationStatus(bool isActive) {
   if (vibrationState == isActive) return; // no change, skip
   if (!Firebase.ready()) return;
@@ -406,7 +523,7 @@ void updateVibrationStatus(bool isActive) {
 }
 
 
-
+//Fetching wakeup data from firebase
 void fetchWakeupData() {
   if (Firebase.RTDB.getJSON(&fbdo, "/commands/wakeupmode")) {
     FirebaseJson& json = fbdo.jsonObject();
@@ -419,6 +536,7 @@ void fetchWakeupData() {
   }
 }
 
+//Getting local time
 String getCurrentTimeEstonia() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
@@ -430,6 +548,7 @@ String getCurrentTimeEstonia() {
   return String(buffer);
 }
 
+//Logic how vibration motors need to work in wakeup mode
 void runMotorSequence() {
   updateVibrationStatus(true);
   unsigned long startMillis = millis();
@@ -487,7 +606,7 @@ void runMotorSequence() {
 
     digitalWrite(motorPin, LOW);
 
-    // Replace delay with heartbeat sending loop during pause
+    // Replacing  delay with heartbeat sending loop during pause
     unsigned long pauseStart = millis();
     while (millis() - pauseStart < pauseDuration) {
       if (millis() - lastHeartbeatSent >= 1000) {
@@ -509,6 +628,7 @@ long long getRealTimestamp() {
   return now > 0 ? (long long)now * 1000 : 0;
 }
 
+//Playing song for 2 minutes 
 void playSong(long melody[], long durations[], int length, unsigned long playMillis) {
   Serial.println("🎵 Playing song...");
   unsigned long startTime = millis();
@@ -521,7 +641,7 @@ void playSong(long melody[], long durations[], int length, unsigned long playMil
       tone(BUZZER_PIN, melody[i], noteDuration);
     }
 
-    // Delay in smaller chunks to allow heartbeat updates:
+    // Delay in smaller chunks to allow heartbeat updates to shiw that bear is connected to wifi:
     unsigned long noteStart = millis();
     while (millis() - noteStart < noteDuration * 1.3) {
       // Send heartbeat every 1 second while playing
@@ -570,4 +690,3 @@ void readFirebaseCommand() {
     Serial.println("❌ No recognized song pattern from Firebase");
   }
 }
-
