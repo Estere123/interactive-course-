@@ -1,8 +1,8 @@
 #include <WiFi.h>
-#include <WiFi.h>
 #include <HTTPClient.h>
 #include <TinyGPS++.h>
 #include <HardwareSerial.h>
+#include <math.h> // for cos(), radians()
 
 // WiFi credentials
 #define WIFI_SSID "TLU"
@@ -23,9 +23,13 @@ const double SAFE_LAT = 59.438940;
 const double SAFE_LNG = 24.772575;
 const double SAFE_RADIUS_METERS = 50.0;
 
+// Simulation control
+bool simulateGPS = false;
+bool simulateInside = false;
+
 void setup() {
-  Serial.begin(115200);                         
-  SerialGPS.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);  // GPS module
+  Serial.begin(115200);
+  SerialGPS.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to WiFi...");
@@ -39,6 +43,9 @@ void setup() {
 
   Serial.println("GPS Safe Zone Monitor Initialized");
   Serial.println("Waiting for GPS signal...");
+
+  Serial.println("Type 'inside' or 'outside' to simulate GPS location.");
+  Serial.println("Type 'real' to use real GPS data.");
 }
 
 void loop() {
@@ -46,96 +53,125 @@ void loop() {
   static unsigned long lastAlert = 0;
   static unsigned long lastFallbackSent = 0;
 
-  while (SerialGPS.available() > 0) {
-    gps.encode(SerialGPS.read());
+  // Check for serial command
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    if (cmd.equalsIgnoreCase("inside")) {
+      simulateGPS = true;
+      simulateInside = true;
+      Serial.println("✅ Simulation: INSIDE safe zone");
+    } else if (cmd.equalsIgnoreCase("outside")) {
+      simulateGPS = true;
+      simulateInside = false;
+      Serial.println("✅ Simulation: OUTSIDE safe zone");
+    } else if (cmd.equalsIgnoreCase("real")) {
+      simulateGPS = false;
+      Serial.println("✅ Switched to REAL GPS data");
+    }
   }
 
-  // Regular update if GPS location is valid and updated
-  if (gps.location.isValid() && gps.location.isUpdated()) {
-    if (millis() - lastUpdate > 2000) {  // Update every 2 seconds
+  double lat = 0.0, lng = 0.0;
+  bool insideGeofence = false;
+
+  // Calculate longitude offset for ~55 meters outside safe zone
+  double meters_per_degree_lon = 111320 * cos(radians(SAFE_LAT));
+  double offset_lon = 55.0 / meters_per_degree_lon;
+
+  // Simulation mode
+  if (simulateGPS) {
+    if (simulateInside) {
+      lat = SAFE_LAT;
+      lng = SAFE_LNG;
+    } else {
+      // About 55 meters east (outside the safe zone)
+      lat = SAFE_LAT;
+      lng = SAFE_LNG + offset_lon;
+    }
+    double distance = TinyGPSPlus::distanceBetween(lat, lng, SAFE_LAT, SAFE_LNG);
+    insideGeofence = distance <= SAFE_RADIUS_METERS;
+
+    Serial.println("📍 Simulated location:");
+    Serial.print("Lat: "); Serial.println(lat, 6);
+    Serial.print("Lng: "); Serial.println(lng, 6);
+    Serial.print("Distance from safe zone: "); Serial.print(distance, 2); Serial.println(" meters");
+    Serial.print("Geofence status: "); Serial.println(insideGeofence ? "Inside" : "Outside");
+
+  } else {
+    // Real GPS data
+    while (SerialGPS.available() > 0) {
+      gps.encode(SerialGPS.read());
+    }
+
+    if (gps.location.isValid() && gps.location.isUpdated()) {
+      if (millis() - lastUpdate > 2000) {
+        lastUpdate = millis();
+
+        lat = gps.location.lat();
+        lng = gps.location.lng();
+        double distance = TinyGPSPlus::distanceBetween(lat, lng, SAFE_LAT, SAFE_LNG);
+        insideGeofence = distance <= SAFE_RADIUS_METERS;
+
+        Serial.println("📡 Real GPS location:");
+        Serial.print("Lat: "); Serial.println(lat, 6);
+        Serial.print("Lng: "); Serial.println(lng, 6);
+        Serial.print("Distance from safe zone: "); Serial.print(distance, 2); Serial.println(" meters");
+        Serial.print("Geofence status: "); Serial.println(insideGeofence ? "Inside" : "Outside");
+      }
+    } else if (millis() - lastUpdate > 5000 && millis() - lastFallbackSent > 30000) {
       lastUpdate = millis();
+      lastFallbackSent = millis();
 
-      double lat = gps.location.lat();
-      double lng = gps.location.lng();
-      double distance = TinyGPSPlus::distanceBetween(lat, lng, SAFE_LAT, SAFE_LNG);
-      bool insideGeofence = distance <= SAFE_RADIUS_METERS;
+      Serial.println("⚠️ No valid GPS data. Sending geofence: false as fallback");
 
-      Serial.println("Location updated:");
-      Serial.print("Lat: "); Serial.println(lat, 6);
-      Serial.print("Lng: "); Serial.println(lng, 6);
-      Serial.print("Distance from safe zone: ");
-      Serial.print(distance, 2); Serial.println(" meters");
-      Serial.print("Geofence status: ");
-      Serial.println(insideGeofence ? "Inside" : "Outside");
-
-      // Create JSON payload
-      String payload = "{";
-      payload += "\"geofence\": " + String(insideGeofence ? "true" : "false");
-      payload += ",";
-      payload += "\"latitude\": " + String(lat, 6);
-      payload += ",";
-      payload += "\"longitude\": " + String(lng, 6);
-      payload += "}";
-
-      // Send to Firebase
+      String fallbackPayload = "{\"geofence\": false}";
       if (WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
         http.begin(FIREBASE_URL);
         http.addHeader("Content-Type", "application/json");
-
-        int httpResponseCode = http.PUT(payload);
-        if (httpResponseCode > 0) {
-          Serial.print("Firebase response: ");
-          Serial.println(httpResponseCode);
-        } else {
-          Serial.print("Failed to send to Firebase: ");
-          Serial.println(http.errorToString(httpResponseCode).c_str());
-        }
+        int httpResponseCode = http.PUT(fallbackPayload);
+        Serial.print("Fallback Firebase response: ");
+        Serial.println(httpResponseCode);
         http.end();
-      } else {
-        Serial.println("WiFi disconnected. Reconnecting...");
-        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
       }
+      return;
     }
   }
 
-  // Fallback: No valid GPS location for 5 seconds
-  else if (millis() - lastUpdate > 5000 && millis() - lastFallbackSent > 30000) {
+  // Send data to Firebase
+  if (millis() - lastUpdate > 2000 && (simulateGPS || gps.location.isValid())) {
     lastUpdate = millis();
-    lastFallbackSent = millis();
 
-    Serial.println("⚠️ No valid GPS data. Sending geofence: false as fallback");
-
-    String fallbackPayload = "{";
-    fallbackPayload += "\"geofence\": false";
-    fallbackPayload += "}";
+    String payload = "{";
+    payload += "\"geofence\": " + String(insideGeofence ? "true" : "false");
+    payload += ",";
+    payload += "\"latitude\": " + String(lat, 6);
+    payload += ",";
+    payload += "\"longitude\": " + String(lng, 6);
+    payload += "}";
 
     if (WiFi.status() == WL_CONNECTED) {
       HTTPClient http;
       http.begin(FIREBASE_URL);
       http.addHeader("Content-Type", "application/json");
-
-      int httpResponseCode = http.PUT(fallbackPayload);
-      if (httpResponseCode > 0) {
-        Serial.print("Fallback Firebase response: ");
-        Serial.println(httpResponseCode);
-      } else {
-        Serial.print("Failed to send fallback to Firebase: ");
-        Serial.println(http.errorToString(httpResponseCode).c_str());
-      }
+      int httpResponseCode = http.PUT(payload);
+      Serial.print("📤 Firebase response: ");
+      Serial.println(httpResponseCode);
       http.end();
     } else {
-      Serial.println("WiFi disconnected. Reconnecting...");
+      Serial.println("📶 WiFi disconnected. Reconnecting...");
       WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     }
   }
 
-  // Alert every 5 seconds if no satellites
-  if (millis() - lastAlert > 5000) {
+  // Alert if no satellites (real mode only)
+  if (!simulateGPS && millis() - lastAlert > 5000) {
     lastAlert = millis();
     if (gps.satellites.value() == 0) {
-      Serial.println("\n⚠️ NO SATELLITES DETECTED - check GPS module & antenna");
+      Serial.println("⚠️ NO SATELLITES DETECTED - check GPS module & antenna");
     }
   }
+
+  delay(5000); // For easier serial monitor reading
 }
 
