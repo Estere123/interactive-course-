@@ -689,4 +689,4 @@ void readFirebaseCommand() {
   } else {
     Serial.println("❌ No recognized song pattern from Firebase");
   }
-}
+} 
